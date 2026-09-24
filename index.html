@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leemos juntos — 1° Básico A</title>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   LO ÚNICO QUE HAY QUE EDITAR EN ESTE ARCHIVO
+
+   Pega abajo, entre las comillas, la dirección de tu aplicación web de
+   Apps Script: la que termina en /exec.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+var API = "PEGA_AQUI_TU_URL_QUE_TERMINA_EN_EXEC";
+
+/* Nada más. Los textos, las preguntas y la lista de estudiantes viven en
+   Apps Script, no en este archivo: así no quedan publicados en internet y
+   cada semana los cambias en un solo lugar. */
+</script>
+
+<style>
+  :root{--tinta:#14161a;--tinta2:#4e5259;--suave:#7c818a;--linea:#dedcd5;
+        --fondo:#f6f5f2;--papel:#fff;--azul:#184f95;--rojo:#a32f2e;--verde:#1f6b4a;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);color:var(--tinta);
+       font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       font-size:17px;line-height:1.55;}
+  .caja{max-width:640px;margin:0 auto;padding:20px 16px 60px;}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--suave);font-size:14px;margin:0 0 22px}
+  .tarjeta{background:var(--papel);border:1px solid var(--linea);border-radius:10px;
+           padding:18px;margin-bottom:16px;}
+  .paso{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+        color:var(--suave);margin-bottom:8px}
+  ol{margin:0;padding-left:20px} ol li{margin-bottom:6px}
+  .lectura{font-size:24px;line-height:1.9;font-weight:500;margin:0}
+  button{font:inherit;font-weight:600;border-radius:9px;border:1px solid var(--tinta);
+         background:var(--tinta);color:#fff;padding:14px 20px;cursor:pointer;width:100%}
+  button.gris{background:var(--papel);color:var(--tinta)}
+  button:disabled{opacity:.45;cursor:default}
+  .fila{display:flex;gap:10px;margin-top:12px}
+  .crono{font-size:34px;font-weight:700;text-align:center;margin:14px 0 4px;
+         font-variant-numeric:tabular-nums}
+  .estado{text-align:center;color:var(--suave);font-size:14px;min-height:20px}
+  .punto{display:inline-block;width:10px;height:10px;border-radius:50%;
+         background:var(--rojo);margin-right:7px;vertical-align:-1px}
+  @keyframes late{50%{opacity:.25}}
+  .grabando .punto{animation:late 1s infinite}
+  audio{width:100%;margin-top:12px}
+  label.op{display:block;border:1px solid var(--linea);border-radius:9px;padding:13px 14px;
+           margin-top:9px;cursor:pointer;background:var(--papel)}
+  label.op input{margin-right:10px;transform:scale(1.25)}
+  label.op:has(input:checked){border-color:var(--tinta);box-shadow:inset 0 0 0 1px var(--tinta)}
+  .preg{font-weight:600;margin:22px 0 2px}
+  select{font:inherit;width:100%;padding:13px;border:1px solid var(--linea);
+         border-radius:9px;background:var(--papel)}
+  .aviso{font-size:13.5px;color:var(--tinta2);background:#fbf7e8;border:1px solid #e8dcae;
+         border-radius:9px;padding:13px;margin-top:14px}
+  .resguardo{background:#eef3fa;border:1px solid #c5d6ee}
+  .resguardo .paso{color:var(--azul)}
+  .resguardo h2{font-size:18px;margin:0 0 10px;letter-spacing:-.01em}
+  .resguardo ul{margin:0;padding-left:0;list-style:none}
+  .resguardo li{position:relative;padding-left:26px;margin-bottom:9px;font-size:15px;
+                color:var(--tinta2);line-height:1.5}
+  .resguardo li::before{content:"";position:absolute;left:4px;top:8px;width:7px;height:7px;
+                        border-radius:50%;background:var(--azul)}
+  .resguardo .firma{font-size:13px;color:var(--suave);margin:14px 0 0;
+                    border-top:1px solid #c5d6ee;padding-top:11px}
+  .error{color:var(--rojo);font-size:14px;margin-top:10px}
+  .resultado{text-align:center;padding:28px 18px}
+  .resultado .cifra{font-size:52px;font-weight:800;letter-spacing:-.03em;color:var(--verde)}
+  .resultado .msg{font-size:19px;margin:10px 0 6px}
+  .oculto{display:none!important}
+  .cargando{text-align:center;color:var(--suave);padding:60px 20px}
+</style>
+</head>
+<body>
+
+<div class="caja">
+  <div id="cargando" class="cargando">Cargando la lectura…</div>
+
+  <div id="app" class="oculto">
+    <h1 id="titulo"></h1>
+    <p class="sub" id="subtitulo"></p>
+
+    <div id="formulario">
+      <div class="tarjeta resguardo">
+        <div class="paso">Antes de empezar</div>
+        <h2 id="privTitulo"></h2>
+        <ul id="privPuntos"></ul>
+        <p class="firma" id="privContacto"></p>
+      </div>
+
+      <div class="tarjeta">
+        <div class="paso">Cómo hacerlo</div>
+        <ol id="instrucciones"></ol>
+        <p style="margin:12px 0 0;color:var(--tinta2);font-size:15px">
+          Si se equivoca, no le dé la respuesta: vuelvan a leer juntos. Equivocarse
+          es parte de aprender a leer.</p>
+      </div>
+
+      <div class="tarjeta">
+        <div class="paso">El texto</div>
+        <p class="lectura" id="texto"></p>
+      </div>
+
+      <div class="tarjeta" id="tarjetaAudio">
+        <div class="paso">Grabación</div>
+        <p style="margin:0 0 10px;color:var(--tinta2);font-size:15px">
+          Presione Grabar y pídale que lea en voz alta. Al terminar, presione Listo.</p>
+        <div class="crono" id="crono">0:00</div>
+        <div class="estado" id="estadoAudio"></div>
+        <div class="fila">
+          <button id="btnGrabar">Grabar</button>
+          <button id="btnDetener" class="gris oculto">Listo</button>
+        </div>
+        <audio id="reproductor" controls class="oculto"></audio>
+        <div class="fila oculto" id="filaRepetir">
+          <button id="btnRepetir" class="gris">Grabar de nuevo</button>
+        </div>
+
+        <div id="respaldo" class="oculto">
+          <div class="aviso">
+            Este navegador no permite grabar desde la página. Grabe con la aplicación
+            de notas de voz del celular y suba el archivo aquí.
+          </div>
+          <input type="file" id="archivoAudio" accept="audio/*" style="margin-top:12px;width:100%">
+        </div>
+
+        <label class="op" style="margin-top:14px">
+          <input type="checkbox" id="completo"> Leyó el texto completo
+        </label>
+      </div>
+
+      <div class="tarjeta">
+        <div class="paso">Preguntas</div>
+        <div id="preguntas"></div>
+
+        <div class="preg">¿Cómo leyó el texto su hijo o hija?</div>
+        <div id="comoLeyo"></div>
+
+        <div class="preg" style="margin-top:26px">Ahora pregúntele a su hijo o hija</div>
+        <div id="autoeval"></div>
+      </div>
+
+      <div class="tarjeta">
+        <div class="paso">Para terminar</div>
+        <div class="preg" style="margin-top:0">¿Quién es el estudiante?</div>
+        <select id="nombre"><option value="">Elija el nombre</option></select>
+
+        <div class="aviso" id="aviso"></div>
+        <label class="op">
+          <input type="checkbox" id="consiento">
+          Autorizo que se guarde la grabación de la voz de mi hijo o hija, en las
+          condiciones descritas al comienzo de esta página.
+        </label>
+
+        <div class="fila"><button id="btnEnviar">Enviar</button></div>
+        <div class="error" id="error"></div>
+      </div>
+    </div>
+
+    <div id="resultado" class="tarjeta resultado oculto">
+      <div class="cifra" id="resCifra"></div>
+      <div class="msg" id="resMsg"></div>
+      <div class="sub" id="resTiempo"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var D = null, audioB64 = null, rec = null, trozos = [], t0 = 0, cron = null, segundos = 0;
+var NIVEL = parseInt(new URLSearchParams(location.search).get('n') || '1', 10);
+
+// ── carga de los datos desde Apps Script ─────────────────────────────────────
+fetch(API + '?formato=json&n=' + NIVEL)
+  .then(function (r) { return r.json(); })
+  .then(function (datos) { D = datos; pintar(); })
+  .catch(function () {
+    document.getElementById('cargando').innerHTML =
+      'No se pudo cargar la lectura.<br>Revise su conexión y vuelva a entrar.';
+  });
+
+function pintar() {
+  document.getElementById('cargando').classList.add('oculto');
+  document.getElementById('app').classList.remove('oculto');
+
+  document.getElementById('titulo').textContent = D.nivel.tituloPublico;
+  document.getElementById('subtitulo').textContent =
+    'Lectura ' + D.lectura.numero + ': ' + D.lectura.titulo + ' · unos 10 minutos';
+  document.getElementById('texto').textContent = D.nivel.texto;
+  document.getElementById('aviso').textContent = D.privacidad.recordatorio;
+  document.getElementById('privTitulo').textContent = D.privacidad.titulo;
+  document.getElementById('privContacto').textContent = D.privacidad.contacto;
+  D.privacidad.puntos.forEach(function (t) {
+    var li = document.createElement('li'); li.textContent = t;
+    document.getElementById('privPuntos').appendChild(li);
+  });
+  D.nivel.instrucciones.forEach(function (t) {
+    var li = document.createElement('li'); li.textContent = t;
+    document.getElementById('instrucciones').appendChild(li);
+  });
+  D.estudiantes.forEach(function (n) {
+    var o = document.createElement('option'); o.value = n; o.textContent = n;
+    document.getElementById('nombre').appendChild(o);
+  });
+
+  var cp = document.getElementById('preguntas');
+  D.nivel.preguntas.forEach(function (p, i) {
+    var h = document.createElement('div'); h.className = 'preg';
+    h.textContent = p.texto; cp.appendChild(h);
+    var c = document.createElement('div'); cp.appendChild(c);
+    opciones(c, 'p' + i, p.alternativas);
+  });
+  opciones(document.getElementById('comoLeyo'), 'como', [
+    'Lo leyó solo, sin ayuda',
+    'Lo leyó con ayuda en algunas palabras',
+    'Lo leyó conmigo, palabra por palabra',
+    'Todavía no puede leerlo, se lo leí yo']);
+  var ae = document.getElementById('autoeval');
+  [['gusto', '¿Te gustó la lectura?', ['No mucho', 'Un poco', 'Sí, mucho']],
+   ['entendio', '¿Entendiste la historia?', ['No', 'Algunas cosas', 'Todo']],
+   ['velper', '¿Cómo leíste las palabras?', ['Lento', 'Normal', 'Rápido y bien']]
+  ].forEach(function (q) {
+    var h = document.createElement('div'); h.className = 'preg';
+    h.style.fontWeight = '500'; h.textContent = q[1]; ae.appendChild(h);
+    var c = document.createElement('div'); ae.appendChild(c);
+    opciones(c, q[0], q[2]);
+  });
+}
+
+function opciones(cont, nombre, lista) {
+  lista.forEach(function (alt) {
+    var l = document.createElement('label'); l.className = 'op';
+    var i = document.createElement('input');
+    i.type = 'radio'; i.name = nombre; i.value = alt;
+    l.appendChild(i); l.appendChild(document.createTextNode(alt));
+    cont.appendChild(l);
+  });
+}
+
+// ── grabación ────────────────────────────────────────────────────────────────
+function reloj() {
+  segundos = Math.round((Date.now() - t0) / 1000);
+  document.getElementById('crono').textContent =
+    Math.floor(segundos / 60) + ':' + ('0' + (segundos % 60)).slice(-2);
+}
+function mostrarRespaldo() {
+  document.getElementById('respaldo').classList.remove('oculto');
+  document.getElementById('btnGrabar').classList.add('oculto');
+  document.getElementById('estadoAudio').textContent = '';
+}
+document.getElementById('btnGrabar').onclick = function () {
+  if (!navigator.mediaDevices || !window.MediaRecorder) return mostrarRespaldo();
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    trozos = [];
+    rec = new MediaRecorder(stream);
+    rec.ondataavailable = function (ev) { if (ev.data.size) trozos.push(ev.data); };
+    rec.onstop = function () {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      var blob = new Blob(trozos, { type: rec.mimeType || 'audio/webm' });
+      var fr = new FileReader();
+      fr.onload = function () { audioB64 = fr.result; };
+      fr.readAsDataURL(blob);
+      var r = document.getElementById('reproductor');
+      r.src = URL.createObjectURL(blob); r.classList.remove('oculto');
+      document.getElementById('filaRepetir').classList.remove('oculto');
+      document.getElementById('estadoAudio').textContent = 'Grabación lista.';
+    };
+    rec.start();
+    t0 = Date.now(); cron = setInterval(reloj, 500);
+    document.getElementById('tarjetaAudio').classList.add('grabando');
+    document.getElementById('estadoAudio').innerHTML = '<span class="punto"></span>Grabando…';
+    document.getElementById('btnGrabar').classList.add('oculto');
+    document.getElementById('btnDetener').classList.remove('oculto');
+    document.getElementById('reproductor').classList.add('oculto');
+    document.getElementById('filaRepetir').classList.add('oculto');
+  }).catch(function () { mostrarRespaldo(); });
+};
+document.getElementById('btnDetener').onclick = function () {
+  if (rec && rec.state !== 'inactive') rec.stop();
+  clearInterval(cron); reloj();
+  document.getElementById('tarjetaAudio').classList.remove('grabando');
+  document.getElementById('btnDetener').classList.add('oculto');
+};
+document.getElementById('btnRepetir').onclick = function () {
+  audioB64 = null; segundos = 0;
+  document.getElementById('crono').textContent = '0:00';
+  document.getElementById('reproductor').classList.add('oculto');
+  document.getElementById('filaRepetir').classList.add('oculto');
+  document.getElementById('btnGrabar').classList.remove('oculto');
+  document.getElementById('estadoAudio').textContent = '';
+};
+document.getElementById('archivoAudio').onchange = function (ev) {
+  var f = ev.target.files[0]; if (!f) return;
+  if (f.size > 12 * 1024 * 1024) {
+    document.getElementById('error').textContent =
+      'El archivo es muy pesado. Grabe un audio más corto.'; return;
+  }
+  var fr = new FileReader();
+  fr.onload = function () {
+    audioB64 = fr.result;
+    document.getElementById('estadoAudio').textContent = 'Audio cargado.';
+  };
+  fr.readAsDataURL(f);
+};
+
+// ── envío ────────────────────────────────────────────────────────────────────
+function marcado(n) {
+  var e = document.querySelector('input[name="' + n + '"]:checked');
+  return e ? e.value : '';
+}
+document.getElementById('btnEnviar').onclick = function () {
+  var err = document.getElementById('error');
+  var nombre = document.getElementById('nombre').value;
+  if (!nombre) { err.textContent = 'Elija el nombre del estudiante.'; return; }
+  var respuestas = D.nivel.preguntas.map(function (p, i) { return marcado('p' + i); });
+  if (respuestas.some(function (r) { return !r; })) {
+    err.textContent = 'Falta responder alguna pregunta.'; return;
+  }
+  if (!marcado('como')) { err.textContent = 'Falta indicar cómo leyó el texto.'; return; }
+  if (audioB64 && !document.getElementById('consiento').checked) {
+    err.textContent = 'Para enviar la grabación necesitamos su autorización.'; return;
+  }
+  err.textContent = '';
+  var b = document.getElementById('btnEnviar');
+  b.disabled = true; b.textContent = 'Enviando…';
+
+  // Sin cabeceras propias: así el navegador lo trata como envío simple y
+  // Apps Script lo acepta sin problemas de permisos entre dominios.
+  fetch(API, {
+    method: 'POST',
+    body: JSON.stringify({
+      nivel: D.nivel.nivel,
+      nombre: nombre,
+      respuestas: respuestas,
+      segundos: segundos,
+      leyoCompleto: document.getElementById('completo').checked,
+      audio: audioB64,
+      comoLeyo: marcado('como'),
+      gusto: marcado('gusto'),
+      entendio: marcado('entendio'),
+      velocidadPercibida: marcado('velper')
+    })
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (r) {
+    if (!r.ok) throw new Error(r.error || 'error');
+    document.getElementById('formulario').classList.add('oculto');
+    document.getElementById('resultado').classList.remove('oculto');
+    document.getElementById('resCifra').textContent =
+      r.resultado.correctas + ' de ' + r.resultado.total;
+    document.getElementById('resMsg').textContent = r.resultado.mensaje;
+    document.getElementById('resTiempo').textContent = r.resultado.segundos
+      ? 'Leyó durante ' + r.resultado.segundos + ' segundos.' : '';
+    window.scrollTo(0, 0);
+  })
+  .catch(function (e) {
+    b.disabled = false; b.textContent = 'Enviar';
+    err.textContent = 'No se pudo enviar: ' + e.message +
+      '. Revise su conexión e inténtelo otra vez.';
+  });
+};
+</script>
+</body>
+</html>
