@@ -187,7 +187,7 @@ function analizarLectura(muestras, sr) {
   var SUAVIZADO = 3;                        // 60 ms: ignora chasquidos y micro-cortes
   var paso = Math.round(sr * VENTANA);
   var n = Math.floor(muestras.length / paso);
-  if (n < 25) return null;                  // menos de medio segundo: nada que medir
+  if (n < 25) return {error: 'grabación muy corta'};
 
   var db = new Float64Array(n);
   for (var i = 0; i < n; i++) {
@@ -198,8 +198,10 @@ function analizarLectura(muestras, sr) {
 
   var orden = Array.prototype.slice.call(db).sort(function (a, b) { return a - b; });
   var pct = function (q) { return orden[Math.max(0, Math.min(n - 1, Math.round(q * (n - 1))))]; };
-  var ruido = pct(0.10), alto = pct(0.95);
-  if (alto - ruido < 12) return null;       // sin contraste: ruido, o audio en silencio
+  var ruido = pct(0.05), alto = pct(0.95);
+  var contraste = alto - ruido;
+  // Si la voz apenas se despega del ruido de fondo, no se clasifica: se dice por qué.
+  if (contraste < 8) return {error: 'poco contraste con el ruido (' + contraste.toFixed(0) + ' dB)'};
 
   var umbral = ruido + (alto - ruido) * 0.35;
   var voz = [];
@@ -208,7 +210,7 @@ function analizarLectura(muestras, sr) {
   voz = quitarChispazos(voz, SUAVIZADO);
 
   var ini = voz.indexOf(true), fin = voz.lastIndexOf(true);
-  if (ini < 0 || fin - ini < 10) return null;
+  if (ini < 0 || fin - ini < 10) return {error: 'no se detectó voz sostenida'};
 
   var pausas = [], tramos = [], trozosVoz = 0;
   var corriendo = 0, callando = 0;
@@ -233,7 +235,8 @@ function analizarLectura(muestras, sr) {
     pausaMedia: largas.length ? +(suma(largas) / largas.length).toFixed(2) : 0,
     pausaMax: largas.length ? +Math.max.apply(null, largas).toFixed(2) : 0,
     tramoMax: tramos.length ? +Math.max.apply(null, tramos).toFixed(2) : 0,
-    silencio: +(1 - (trozosVoz * VENTANA) / dur).toFixed(3)
+    silencio: +(1 - (trozosVoz * VENTANA) / dur).toFixed(3),
+    contraste: +contraste.toFixed(1)
   };
 }
 
@@ -341,8 +344,8 @@ function medirAudio(blob) {
     }).then(function (buf) {
       metricas = analizarLectura(buf.getChannelData(0), buf.sampleRate);
       ctx.close();
-    }).catch(function () { metricas = null; try { ctx.close(); } catch (e) {} });
-  } catch (e) { metricas = null; }
+    }).catch(function () { metricas = {error: 'el navegador no pudo leer el audio'}; try { ctx.close(); } catch (e) {} });
+  } catch (e) { metricas = {error: 'no se pudo iniciar la medición'}; }
 }
 
 // ── grabación ────────────────────────────────────────────────────────────────
