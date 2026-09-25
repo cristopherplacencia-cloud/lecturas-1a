@@ -171,7 +171,94 @@ var API = "https://script.google.com/macros/s/AKfycbxVPF-rXOIj9gfPcdtxWSkfsB7AH1
 </div>
 
 <script>
-var D = null, audioB64 = null, rec = null, trozos = [], t0 = 0, cron = null, segundos = 0;
+/**
+ * Análisis de pausas de una lectura en voz alta.
+ * Entra el audio crudo (muestras entre -1 y 1) y salen medidas que describen
+ * CÓMO se leyó, no qué se dijo.
+ *
+ * Las categorías de la pauta se distinguen por dónde caen los silencios:
+ * silábico corta dentro de las palabras, palabra a palabra corta entre cada
+ * una, unidades cortas agrupa de a dos o tres, fluida solo se detiene en los
+ * puntos.
+ */
+function analizarLectura(muestras, sr) {
+  var VENTANA = 0.02;                       // 20 ms por trozo
+  var PAUSA_MIN = 0.25;                     // un silencio cuenta desde 250 ms
+  var SUAVIZADO = 3;                        // 60 ms: ignora chasquidos y micro-cortes
+  var paso = Math.round(sr * VENTANA);
+  var n = Math.floor(muestras.length / paso);
+  if (n < 25) return null;                  // menos de medio segundo: nada que medir
+
+  var db = new Float64Array(n);
+  for (var i = 0; i < n; i++) {
+    var s = 0;
+    for (var j = 0; j < paso; j++) { var v = muestras[i * paso + j]; s += v * v; }
+    db[i] = 20 * Math.log10(Math.sqrt(s / paso) + 1e-9);
+  }
+
+  var orden = Array.prototype.slice.call(db).sort(function (a, b) { return a - b; });
+  var pct = function (q) { return orden[Math.max(0, Math.min(n - 1, Math.round(q * (n - 1))))]; };
+  var ruido = pct(0.10), alto = pct(0.95);
+  if (alto - ruido < 12) return null;       // sin contraste: ruido, o audio en silencio
+
+  var umbral = ruido + (alto - ruido) * 0.35;
+  var voz = [];
+  for (i = 0; i < n; i++) voz.push(db[i] > umbral);
+  voz = cerrarHuecos(voz, SUAVIZADO);
+  voz = quitarChispazos(voz, SUAVIZADO);
+
+  var ini = voz.indexOf(true), fin = voz.lastIndexOf(true);
+  if (ini < 0 || fin - ini < 10) return null;
+
+  var pausas = [], tramos = [], trozosVoz = 0;
+  var corriendo = 0, callando = 0;
+  for (i = ini; i <= fin; i++) {
+    if (voz[i]) {
+      trozosVoz++; corriendo++;
+      if (callando) { pausas.push(callando * VENTANA); callando = 0; }
+    } else {
+      callando++;
+      if (corriendo) { tramos.push(corriendo * VENTANA); corriendo = 0; }
+    }
+  }
+  if (corriendo) tramos.push(corriendo * VENTANA);
+
+  var largas = pausas.filter(function (p) { return p >= PAUSA_MIN; });
+  var dur = (fin - ini + 1) * VENTANA;
+  var suma = function (a) { return a.reduce(function (x, y) { return x + y; }, 0); };
+
+  return {
+    duracion: +dur.toFixed(2),
+    pausas: largas.length,
+    pausaMedia: largas.length ? +(suma(largas) / largas.length).toFixed(2) : 0,
+    pausaMax: largas.length ? +Math.max.apply(null, largas).toFixed(2) : 0,
+    tramoMax: tramos.length ? +Math.max.apply(null, tramos).toFixed(2) : 0,
+    silencio: +(1 - (trozosVoz * VENTANA) / dur).toFixed(3)
+  };
+}
+
+function cerrarHuecos(v, k) {           // un silencio muy breve no es una pausa
+  var r = v.slice();
+  for (var i = 0; i < r.length; i++) {
+    if (r[i]) continue;
+    var j = i; while (j < r.length && !r[j]) j++;
+    if (j - i <= k && i > 0 && j < r.length) for (var m = i; m < j; m++) r[m] = true;
+    i = j - 1;
+  }
+  return r;
+}
+function quitarChispazos(v, k) {        // un ruido muy breve no es voz
+  var r = v.slice();
+  for (var i = 0; i < r.length; i++) {
+    if (!r[i]) continue;
+    var j = i; while (j < r.length && r[j]) j++;
+    if (j - i <= k) for (var m = i; m < j; m++) r[m] = false;
+    i = j - 1;
+  }
+  return r;
+}
+
+var D = null, audioB64 = null, metricas = null, rec = null, trozos = [], t0 = 0, cron = null, segundos = 0;
 var NIVEL = parseInt(new URLSearchParams(location.search).get('n') || '1', 10);
 
 // ── carga de los datos desde Apps Script ─────────────────────────────────────
@@ -241,6 +328,23 @@ function opciones(cont, nombre, lista) {
   });
 }
 
+// ── medición del audio ─────────────────────────────────────────────────────
+// Analiza dónde cayeron los silencios. No reconoce palabras: solo mide el
+// ritmo de la lectura. Si falla, la actividad sigue funcionando igual.
+function medirAudio(blob) {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !blob) return;
+    var ctx = new AC();
+    blob.arrayBuffer().then(function (ab) {
+      return ctx.decodeAudioData(ab);
+    }).then(function (buf) {
+      metricas = analizarLectura(buf.getChannelData(0), buf.sampleRate);
+      ctx.close();
+    }).catch(function () { metricas = null; try { ctx.close(); } catch (e) {} });
+  } catch (e) { metricas = null; }
+}
+
 // ── grabación ────────────────────────────────────────────────────────────────
 function reloj() {
   segundos = Math.round((Date.now() - t0) / 1000);
@@ -261,6 +365,7 @@ document.getElementById('btnGrabar').onclick = function () {
     rec.onstop = function () {
       stream.getTracks().forEach(function (t) { t.stop(); });
       var blob = new Blob(trozos, { type: rec.mimeType || 'audio/webm' });
+      medirAudio(blob);
       var fr = new FileReader();
       fr.onload = function () { audioB64 = fr.result; };
       fr.readAsDataURL(blob);
@@ -286,7 +391,7 @@ document.getElementById('btnDetener').onclick = function () {
   document.getElementById('btnDetener').classList.add('oculto');
 };
 document.getElementById('btnRepetir').onclick = function () {
-  audioB64 = null; segundos = 0;
+  audioB64 = null; metricas = null; segundos = 0;
   document.getElementById('crono').textContent = '0:00';
   document.getElementById('reproductor').classList.add('oculto');
   document.getElementById('filaRepetir').classList.add('oculto');
@@ -299,6 +404,7 @@ document.getElementById('archivoAudio').onchange = function (ev) {
     document.getElementById('error').textContent =
       'El archivo es muy pesado. Grabe un audio más corto.'; return;
   }
+  medirAudio(f);
   var fr = new FileReader();
   fr.onload = function () {
     audioB64 = fr.result;
@@ -337,6 +443,7 @@ document.getElementById('btnEnviar').onclick = function () {
       nombre: nombre,
       respuestas: respuestas,
       segundos: segundos,
+      metricas: metricas,
       leyoCompleto: document.getElementById('completo').checked,
       audio: audioB64,
       comoLeyo: marcado('como'),
