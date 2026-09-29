@@ -156,6 +156,12 @@ var API = "https://script.google.com/macros/s/AKfycbxVPF-rXOIj9gfPcdtxWSkfsB7AH1
           Autorizo que se guarde la grabación de la voz de mi hijo o hija, en las
           condiciones descritas al comienzo de esta página.
         </label>
+        <label class="op">
+          <input type="checkbox" id="consientoIA">
+          Autorizo además que la grabación se analice con inteligencia artificial
+          (Gemini y ChatGPT), sin el nombre de mi hijo o hija, como apoyo a la
+          revisión del profesor. Es opcional.
+        </label>
 
         <div class="fila"><button id="btnEnviar">Enviar</button></div>
         <div class="error" id="error"></div>
@@ -261,7 +267,7 @@ function quitarChispazos(v, k) {        // un ruido muy breve no es voz
   return r;
 }
 
-var D = null, audioB64 = null, metricas = null, rec = null, trozos = [], t0 = 0, cron = null, segundos = 0;
+var D = null, audioB64 = null, audioWav = null, metricas = null, rec = null, trozos = [], t0 = 0, cron = null, segundos = 0;
 var NIVEL = parseInt(new URLSearchParams(location.search).get('n') || '1', 10);
 
 // ── carga de los datos desde Apps Script ─────────────────────────────────────
@@ -331,10 +337,35 @@ function opciones(cont, nombre, lista) {
   });
 }
 
+// Convierte lo grabado a WAV de 16 kHz, mono: el único formato que aceptan
+// las dos IA. Se hace aquí porque la página ya tiene el audio decodificado.
+function aWav(canal, srOrigen) {
+  var sr = 16000, paso = srOrigen / sr, n = Math.floor(canal.length / paso);
+  var buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  function txt(o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+  txt(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); txt(8, 'WAVE');
+  txt(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  txt(36, 'data'); v.setUint32(40, n * 2, true);
+  for (var i = 0; i < n; i++) {
+    // promedio de cada tramo: baja la frecuencia sin dejar un sonido metálico
+    var a = Math.floor(i * paso), b = Math.min(canal.length, Math.floor((i + 1) * paso)), s = 0;
+    for (var k = a; k < b; k++) s += canal[k];
+    var x = b > a ? s / (b - a) : 0;
+    x = Math.max(-1, Math.min(1, x));
+    v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7FFF, true);
+  }
+  var bytes = new Uint8Array(buf), bin = '';
+  for (var j = 0; j < bytes.length; j += 0x8000)
+    bin += String.fromCharCode.apply(null, bytes.subarray(j, j + 0x8000));
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
 // ── medición del audio ─────────────────────────────────────────────────────
 // Analiza dónde cayeron los silencios. No reconoce palabras: solo mide el
 // ritmo de la lectura. Si falla, la actividad sigue funcionando igual.
 function medirAudio(blob) {
+  audioWav = null;
   try {
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC || !blob) return;
@@ -343,6 +374,7 @@ function medirAudio(blob) {
       return ctx.decodeAudioData(ab);
     }).then(function (buf) {
       metricas = analizarLectura(buf.getChannelData(0), buf.sampleRate);
+      try { audioWav = aWav(buf.getChannelData(0), buf.sampleRate); } catch (e) { audioWav = null; }
       ctx.close();
     }).catch(function () { metricas = {error: 'el navegador no pudo leer el audio'}; try { ctx.close(); } catch (e) {} });
   } catch (e) { metricas = {error: 'no se pudo iniciar la medición'}; }
@@ -394,7 +426,7 @@ document.getElementById('btnDetener').onclick = function () {
   document.getElementById('btnDetener').classList.add('oculto');
 };
 document.getElementById('btnRepetir').onclick = function () {
-  audioB64 = null; metricas = null; segundos = 0;
+  audioB64 = null; audioWav = null; metricas = null; segundos = 0;
   document.getElementById('crono').textContent = '0:00';
   document.getElementById('reproductor').classList.add('oculto');
   document.getElementById('filaRepetir').classList.add('oculto');
@@ -448,7 +480,9 @@ document.getElementById('btnEnviar').onclick = function () {
       segundos: segundos,
       metricas: metricas,
       leyoCompleto: document.getElementById('completo').checked,
-      audio: audioB64,
+      audio: audioWav || audioB64,
+      consienteIA: !!audioB64 && document.getElementById('consiento').checked &&
+                   document.getElementById('consientoIA').checked,
       comoLeyo: marcado('como'),
       gusto: marcado('gusto'),
       entendio: marcado('entendio'),
